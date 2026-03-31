@@ -21,6 +21,8 @@ func main() {
 
 	status := run(ctx, cancel, *httpPort, *dataDir)
 	cancel()
+
+	fmt.Println("Linko is shutting down\n")
 	os.Exit(status)
 }
 
@@ -48,5 +50,6 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir s
 		fmt.Fprintf(os.Stderr, "server error: %v\n", serverErr)
 		return 1
 	}
+
 	return 0
 }

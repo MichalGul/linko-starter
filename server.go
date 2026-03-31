@@ -50,6 +50,13 @@ func (s *server) start() error {
 	if err := s.httpServer.Serve(ln); !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
+
+	tcpAddr, ok := ln.Addr().(*net.TCPAddr)
+	if !ok {
+		return errors.New("failed to get TCP address")
+	}
+	fmt.Printf("Linko is running on http://localhost:%d \n", tcpAddr.Port)
+
 	return nil
 }
 
