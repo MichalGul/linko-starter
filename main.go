@@ -3,11 +3,13 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
+	"log"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
-	"log"
+	"io"
 	"boot.dev/linko/internal/store"
 )
 
@@ -27,22 +29,37 @@ func main() {
 	os.Exit(status)
 }
 
-func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir string) int {
-	var standardLogger = log.New(os.Stderr, "DEBUG: ", log.LstdFlags)
+func initializeLogger(logFile string) (*log.Logger, error) {
+	if logFile != "" {
+		logFile, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open log file: %w", err)
+		}
+		multiWriter := io.MultiWriter(os.Stderr, logFile)
 
-	logFile, err := os.OpenFile("linko.access.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		standardLogger.Printf("failed to open access log: %v\n", err)
+		return log.New(multiWriter, "", log.LstdFlags), nil
 	}
-	var accessLogger = log.New(logFile, "INFO: ", log.LstdFlags)
-	
 
-	st, err := store.New(dataDir, standardLogger)
+	return log.New(os.Stderr, "", log.LstdFlags), nil
+
+}
+
+func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir string) int {
+
+
+	logger, err := initializeLogger(os.Getenv("LINKO_LOG_FILE"))
 	if err != nil {
-		standardLogger.Printf("failed to create store: %v\n", err)
+		fmt.Fprintf(os.Stderr, "failed to initialize logger: %v\n", err)
 		return 1
 	}
-	s := newServer(*st, httpPort, cancel, accessLogger)
+
+
+	st, err := store.New(dataDir, logger)
+	if err != nil {
+		logger.Printf("failed to create store: %v\n", err)
+		return 1
+	}
+	s := newServer(*st, httpPort, cancel, logger)
 	var serverErr error
 	go func() {
 		serverErr = s.start()
@@ -53,11 +70,11 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir s
 	defer cancel()
 
 	if err := s.shutdown(shutdownCtx); err != nil {
-		standardLogger.Printf("failed to shutdown server: %v\n", err)
+		logger.Printf("failed to shutdown server: %v\n", err)
 		return 1
 	}
 	if serverErr != nil {
-		standardLogger.Printf("server error: %v\n", serverErr)
+		logger.Printf("server error: %v\n", serverErr)
 		return 1
 	}
 
