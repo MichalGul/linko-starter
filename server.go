@@ -7,7 +7,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-
 	"boot.dev/linko/internal/store"
 )
 
@@ -55,7 +54,7 @@ func (s *server) start() error {
 	if !ok {
 		return errors.New("failed to get TCP address")
 	}
-	fmt.Printf("Linko is running on http://localhost:%d \n", tcpAddr.Port)
+	Logger.Printf("Linko is running on http://localhost:%d \n", tcpAddr.Port)
 
 	return nil
 }

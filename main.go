@@ -3,14 +3,17 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
-
+	"log"
 	"boot.dev/linko/internal/store"
 )
+
+
+var Logger = log.New(os.Stderr, "DEBUG: ", log.LstdFlags)
+
 
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -22,14 +25,14 @@ func main() {
 	status := run(ctx, cancel, *httpPort, *dataDir)
 	cancel()
 
-	fmt.Println("Linko is shutting down\n")
+	Logger.Println("Linko is shutting down")
 	os.Exit(status)
 }
 
 func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir string) int {
 	st, err := store.New(dataDir)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to create store: %v\n", err)
+		Logger.Printf("failed to create store: %v\n", err)
 		return 1
 	}
 	s := newServer(*st, httpPort, cancel)
@@ -43,11 +46,11 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir s
 	defer cancel()
 
 	if err := s.shutdown(shutdownCtx); err != nil {
-		fmt.Fprintf(os.Stderr, "failed to shutdown server: %v\n", err)
+		Logger.Printf("failed to shutdown server: %v\n", err)
 		return 1
 	}
 	if serverErr != nil {
-		fmt.Fprintf(os.Stderr, "server error: %v\n", serverErr)
+		Logger.Printf("server error: %v\n", serverErr)
 		return 1
 	}
 
