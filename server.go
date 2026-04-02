@@ -25,20 +25,22 @@ type server struct {
 	httpServer *http.Server
 	store      store.Store
 	cancel     context.CancelFunc
+	logger    *log.Logger
 }
 
-func newServer(store store.Store, port int, cancel context.CancelFunc) *server {
+func newServer(store store.Store, port int, cancel context.CancelFunc, logger *log.Logger) *server {
 	mux := http.NewServeMux()
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
-		Handler: requestLogger(Logger)(mux),
+		Handler: requestLogger(logger)(mux),
 	}
 
 	s := &server{
 		httpServer: srv,
 		store:      store,
 		cancel:     cancel,
+		logger: logger,
 	}
 
 	mux.HandleFunc("GET /", s.handlerIndex)
@@ -65,7 +67,7 @@ func (s *server) start() error {
 	if !ok {
 		return errors.New("failed to get TCP address")
 	}
-	Logger.Printf("Linko is running on http://localhost:%d \n", tcpAddr.Port)
+	s.logger.Printf("Linko is running on http://localhost:%d \n", tcpAddr.Port)
 
 	return nil
 }
