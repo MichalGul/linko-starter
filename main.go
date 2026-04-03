@@ -6,7 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -30,19 +30,17 @@ func main() {
 
 type closeFunc func() error
 
-func initializeLogger(logFile string) (*log.Logger, closeFunc, error) {
+func initializeLogger(logFile string) (*slog.Logger, closeFunc, error) {
 	if logFile != "" {
 		file, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to open log file: %w", err)
 		}
 
-
 		bufferedFile := bufio.NewWriterSize(file, 8192)
 		multiWriter := io.MultiWriter(os.Stderr, bufferedFile)
-
 		// Buffer writes to improve performance
-		return log.New(multiWriter, "", log.LstdFlags), func() error {
+		return slog.New(slog.NewTextHandler(multiWriter, nil)), func() error {
 			if err := bufferedFile.Flush(); err != nil {
 				return fmt.Errorf("failed to flush log buffer: %w", err)
 			}
@@ -53,7 +51,9 @@ func initializeLogger(logFile string) (*log.Logger, closeFunc, error) {
 		}, nil
 	}
 
-	return log.New(os.Stderr, "", log.LstdFlags), func() error { return nil }, nil
+	return slog.New(slog.NewTextHandler(os.Stderr, nil)),
+		func() error { return nil },
+		nil
 
 }
 
@@ -69,11 +69,11 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir s
 		if err := close(); err != nil {
 			fmt.Fprintf(os.Stderr, "failed to close logger: %v\n", err)
 		}
-	} ()
+	}()
 
 	st, err := store.New(dataDir, logger)
 	if err != nil {
-		logger.Printf("failed to create store: %v\n", err)
+		logger.Error(fmt.Sprintf("failed to create store: %v\n", err))
 		return 1
 	}
 	s := newServer(*st, httpPort, cancel, logger)
@@ -87,11 +87,11 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir s
 	defer cancel()
 
 	if err := s.shutdown(shutdownCtx); err != nil {
-		logger.Printf("failed to shutdown server: %v\n", err)
+		logger.Error(fmt.Sprintf("failed to shutdown server: %v\n", err))
 		return 1
 	}
 	if serverErr != nil {
-		logger.Printf("server error: %v\n", serverErr)
+		logger.Error(fmt.Sprintf("server error: %v\n", serverErr))
 		return 1
 	}
 

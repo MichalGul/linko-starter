@@ -4,19 +4,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"os"
-
+	"log/slog"
 	"boot.dev/linko/internal/store"
 )
 
-func requestLogger(logger *log.Logger) func(http.Handler) http.Handler {
+func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			next.ServeHTTP(w, r)
-			logger.Printf("Served request: %s %s", r.Method, r.URL.Path)
+			logger.Info(fmt.Sprintf("Served request: %s %s", r.Method, r.URL.Path))
 		})
 	}
 }
@@ -25,10 +24,10 @@ type server struct {
 	httpServer *http.Server
 	store      store.Store
 	cancel     context.CancelFunc
-	logger    *log.Logger
+	logger    *slog.Logger
 }
 
-func newServer(store store.Store, port int, cancel context.CancelFunc, logger *log.Logger) *server {
+func newServer(store store.Store, port int, cancel context.CancelFunc, logger *slog.Logger) *server {
 	mux := http.NewServeMux()
 
 	srv := &http.Server{
@@ -67,7 +66,7 @@ func (s *server) start() error {
 	if !ok {
 		return errors.New("failed to get TCP address")
 	}
-	s.logger.Printf("Linko is running on http://localhost:%d \n", tcpAddr.Port)
+	s.logger.Info(fmt.Sprintf("Linko is running on http://localhost:%d \n", tcpAddr.Port))
 
 	return nil
 }
