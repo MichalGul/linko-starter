@@ -46,7 +46,7 @@ func initializeLogger(logFile string) (*slog.Logger, closeFunc, error) {
 			Level: slog.LevelDebug,
 		})
 		// Level and above goes to file
-		infoHandler := slog.NewTextHandler(bufferedFile, &slog.HandlerOptions{
+		infoHandler := slog.NewJSONHandler(bufferedFile, &slog.HandlerOptions{
 			Level: slog.LevelInfo,
 		})
 
