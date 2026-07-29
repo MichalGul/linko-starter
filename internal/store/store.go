@@ -4,11 +4,14 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
-	"fmt"
+
+	// "fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
-	"log/slog"
+
+	linkoerr "boot.dev/linko/internal/linkoerr"
 )
 
 type ShortURL struct {
@@ -28,7 +31,7 @@ const (
 )
 
 type Store struct {
-	dir string
+	dir    string
 	logger *slog.Logger
 }
 
@@ -37,11 +40,10 @@ func New(dir string, logger *slog.Logger) (*Store, error) {
 		return nil, err
 	}
 	return &Store{
-		dir: dir,
+		dir:    dir,
 		logger: logger,
 	}, nil
-}	
-
+}
 
 func (s *Store) Create(_ context.Context, long string) (string, error) {
 	const retries = 10
@@ -94,7 +96,7 @@ func (s *Store) walk(ctx context.Context, ch chan<- ShortURL) {
 		if !e.IsDir() {
 			long, err := s.Lookup(ctx, e.Name())
 			if err != nil {
-				ch <- ShortURL{Err: fmt.Errorf("read %s: %w", filepath.Join(s.dir, e.Name()), err)}
+				ch <- ShortURL{Err: linkoerr.WithAttrs(err, "path", filepath.Join(s.dir, e.Name()))}
 				continue
 			}
 			ch <- ShortURL{ShortCode: e.Name(), LongURL: long}
@@ -108,14 +110,15 @@ func (s *Store) Lookup(_ context.Context, short string) (string, error) {
 	data, err := os.ReadFile(shortcodeFilepath)
 	if errors.Is(err, os.ErrNotExist) {
 		return "", ErrNotFound
+
 	}
 	if err != nil {
-		s.logger.Error(
-			"Failed to read shortcode file",
-			slog.String("shortcode", short),
-			slog.String("filepath", shortcodeFilepath),
-			slog.Any("error", err),
-		)
+		// s.logger.Error(
+		// 	"Failed to read shortcode file",
+		// 	slog.String("shortcode", short),
+		// 	slog.String("filepath", shortcodeFilepath),
+		// 	slog.Any("error", err),
+		// )
 		return "", err
 	}
 	return string(data), nil
