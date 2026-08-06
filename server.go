@@ -4,22 +4,68 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
-	"log/slog"
+	"time"
+	"io"
 	"boot.dev/linko/internal/store"
 )
+
+type spyReadCloser struct {
+	io.ReadCloser
+	bytesRead int
+}
+
+func (r *spyReadCloser) Read(p []byte) (int, error) {
+	n, err := r.ReadCloser.Read(p)
+	r.bytesRead += n
+	return n, err
+}
+
+type spyResponseWriter struct {
+	http.ResponseWriter
+	bytesWritten int
+	statusCode   int
+}
+
+func (w *spyResponseWriter) Write(p []byte) (int, error) {
+	if w.statusCode == 0 {
+		w.statusCode = http.StatusOK
+	}
+	n, err := w.ResponseWriter.Write(p)
+	w.bytesWritten += n
+	return n, err
+}
+
+func (w *spyResponseWriter) WriteHeader(statusCode int) {
+	w.statusCode = statusCode
+	w.ResponseWriter.WriteHeader(statusCode)
+}
 
 func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			next.ServeHTTP(w, r)
+			start := time.Now()
+			// catches what was in request body and what was written to response body
+			spyReadader := &spyReadCloser{ReadCloser: r.Body}
+			spyResponseWriter := &spyResponseWriter{ResponseWriter: w}
+			// replace the request body with the spyReadCloser
+			r.Body = spyReadader
+
+			// call the next handler in the chain
+			next.ServeHTTP(spyResponseWriter, r)
+
 			logger.Info(
 				"Served request",
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),
 				slog.String("client_ip", r.RemoteAddr),
+				slog.Duration("duration", time.Since(start)),
+				slog.Int("request_body_bytes", spyReadader.bytesRead),
+				slog.Int("response_status", spyResponseWriter.statusCode),
+				slog.Int("response_body_bytes", spyResponseWriter.bytesWritten),
 			)
 		})
 	}

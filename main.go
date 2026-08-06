@@ -16,9 +16,14 @@ import (
 
 	"boot.dev/linko/internal/store"
 	"boot.dev/linko/internal/linkoerr"
-
+	"boot.dev/linko/internal/build"
 	pkgerr "github.com/pkg/errors"
 )
+
+type multiError interface {
+	error
+	Unwrap() []error
+}
 
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -40,6 +45,27 @@ type stackTracer interface {
 	StackTrace() pkgerr.StackTrace
 }
 
+func erorrAttrs(err error) []slog.Attr {
+	var attrs []slog.Attr
+
+	attrs = []slog.Attr{
+			{Key: "message", Value: slog.StringValue(err.Error())},
+		}
+
+	slogAttrs := linkoerr.Attrs(err)
+	attrs = append(attrs, slogAttrs...)
+
+	if stackErr, ok := errors.AsType[stackTracer](err); ok {		
+		attrs = append(attrs, slog.Attr{
+			Key: "stack_trace",
+			Value: slog.StringValue(fmt.Sprintf("%+v", stackErr.StackTrace())),
+		})
+	}
+
+	return attrs
+
+}
+
 // replaceAttr is a slog.HandlerOptions.ReplaceAttr function that formats error attributes 
 // with their full stack trace. Changes low with error key to a string with the formatted error. Leaves all other attributes unchanged.
 func replaceAttr(groups []string, a slog.Attr) slog.Attr {
@@ -49,24 +75,18 @@ func replaceAttr(groups []string, a slog.Attr) slog.Attr {
 			return a
 		}
 
-		groupArgs := []slog.Attr{
-			{Key: "message", Value: slog.StringValue(err.Error())},
+		// Check for multiError type
+		if multiErr, ok := errors.AsType[multiError](err); ok {
+			errorsList := multiErr.Unwrap()
+			var errAttrs []slog.Attr
+			for i, er := range errorsList {		
+				subGroupAttrs := erorrAttrs(er)
+				errAttrs = append(errAttrs, slog.GroupAttrs(fmt.Sprintf("error_%d", i+1), subGroupAttrs...))
+			}
+			return slog.GroupAttrs("errors", errAttrs...)
 		}
 
-
-		slogAttrs := linkoerr.Attrs(err)
-		groupArgs = append(groupArgs, slogAttrs...)
-
-
-
-		if stackErr, ok := errors.AsType[stackTracer](err); ok {		
-			groupArgs = append(groupArgs, slog.Attr{
-				Key: "stack_trace",
-				Value: slog.StringValue(fmt.Sprintf("%+v", stackErr.StackTrace())),
-			})
-
-		}
-
+			groupArgs := erorrAttrs(err)
 			return slog.GroupAttrs("error", groupArgs...)
 
 	}
@@ -124,6 +144,8 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir s
 		fmt.Fprintf(os.Stderr, "failed to initialize logger: %v\n", err)
 		return 1
 	}
+	hostname, _ := os.Hostname()
+	logger = logger.With("git_sha", build.GitSHA, "build_time", build.BuildTime, "env", os.Getenv("env"),"hostname", hostname)
 
 	defer func() {
 		if err := close(); err != nil {

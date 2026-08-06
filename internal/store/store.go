@@ -74,16 +74,21 @@ func (s *Store) List(ctx context.Context) ([]ShortURL, error) {
 	ch := make(chan ShortURL)
 	go s.walk(ctx, ch)
 	var urls []ShortURL
+	var listErrors []error
+
+
 	for e := range ch {
 		if e.Err != nil {
-			return urls, e.Err
+			listErrors = append(listErrors, e.Err)
 		}
 		urls = append(urls, e)
 		if len(urls) >= maxURLs {
 			break
 		}
 	}
-	return urls, nil
+
+
+	return urls, errors.Join(listErrors...)
 }
 
 func (s *Store) walk(ctx context.Context, ch chan<- ShortURL) {
