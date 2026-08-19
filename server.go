@@ -4,14 +4,23 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
 	"os"
+
+	// "os/user"
 	"time"
-	"io"
+
 	"boot.dev/linko/internal/store"
 )
+
+const logContextKey contextKey = "log_context"
+
+type LogContext struct {
+	Username string
+}
 
 type spyReadCloser struct {
 	io.ReadCloser
@@ -45,6 +54,7 @@ func (w *spyResponseWriter) WriteHeader(statusCode int) {
 }
 
 func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
@@ -54,10 +64,19 @@ func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 			// replace the request body with the spyReadCloser
 			r.Body = spyReadader
 
+			logContext := &LogContext{}
+			contextWithLogContext := context.WithValue(r.Context(), logContextKey, logContext)
+			r = r.WithContext(contextWithLogContext)
+
 			// call the next handler in the chain
 			next.ServeHTTP(spyResponseWriter, r)
 
-			logger.Info(
+			requestLogger := logger
+			if logContext.Username != "" {
+				requestLogger = logger.With("user", logContext.Username)
+			}
+
+			requestLogger.Info(
 				"Served request",
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),
@@ -75,7 +94,7 @@ type server struct {
 	httpServer *http.Server
 	store      store.Store
 	cancel     context.CancelFunc
-	logger    *slog.Logger
+	logger     *slog.Logger
 }
 
 func newServer(store store.Store, port int, cancel context.CancelFunc, logger *slog.Logger) *server {
@@ -90,7 +109,7 @@ func newServer(store store.Store, port int, cancel context.CancelFunc, logger *s
 		httpServer: srv,
 		store:      store,
 		cancel:     cancel,
-		logger: logger,
+		logger:     logger,
 	}
 
 	mux.HandleFunc("GET /", s.handlerIndex)
