@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"golang.org/x/crypto/bcrypt"
+	"errors"
 )
 
 import pkgerr "github.com/pkg/errors"
@@ -25,12 +26,12 @@ func (s *server) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		username, password, ok := r.BasicAuth()
 		if !ok {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			HttpError(r.Context(),w, http.StatusUnauthorized, errors.New("Unauthorized"))
 			return
 		}
 		stored, exists := allowedUsers[username]
 		if !exists {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			HttpError(r.Context(),w, http.StatusUnauthorized, errors.New("Unauthorized"))
 			return
 		}
 		ok, err := s.validatePassword(password, stored)
@@ -40,11 +41,11 @@ func (s *server) authMiddleware(next http.Handler) http.Handler {
 				slog.String("user", username),
 				slog.Any("error", err),
 			)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			HttpError(r.Context(),w, http.StatusInternalServerError, err)
 			return
 		}
 		if !ok {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			HttpError(r.Context(),w, http.StatusUnauthorized, errors.New("Unauthorized"))
 			return
 		}
 		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, username))
@@ -63,7 +64,7 @@ func (s *server) validatePassword(password, stored string) (bool, error) {
 	if err == bcrypt.ErrMismatchedHashAndPassword {
 		return false, nil
 	}
-	if err != nil {
+	if err != nil {	
 		return false, pkgerr.WithStack(err)
 	}
 	return true, nil
